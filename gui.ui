@@ -173,7 +173,7 @@
      <rect>
       <x>540</x>
       <y>460</y>
-      <width>218</width>
+      <width>251</width>
       <height>103</height>
      </rect>
     </property>
@@ -198,7 +198,7 @@
       <rect>
        <x>112</x>
        <y>33</y>
-       <width>86</width>
+       <width>111</width>
        <height>26</height>
       </rect>
      </property>
@@ -221,7 +221,7 @@
       <rect>
        <x>112</x>
        <y>65</y>
-       <width>86</width>
+       <width>111</width>
        <height>26</height>
       </rect>
      </property>
@@ -596,6 +596,9 @@
      </property>
      <property name="singleStep">
       <double>0.100000000000000</double>
+     </property>
+     <property name="value">
+      <double>1.000000000000000</double>
      </property>
     </widget>
     <widget class="QLabel" name="labelSpacing">
