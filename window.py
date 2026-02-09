@@ -4,8 +4,8 @@ from PySide6.QtWidgets import (
     QApplication, QMainWindow,
     QMessageBox, QFileDialog, QVBoxLayout
 )
-from PySide6.QtGui import QFontDatabase
-from PySide6.QtCore import Qt, QPointF
+from PySide6.QtGui import QFontDatabase, QTextCursor
+from PySide6.QtCore import Qt, QPointF, QTimer
 
 # Import Custom Widget & Utils
 from gui import Ui_MainWindow
@@ -13,7 +13,13 @@ from icon_dialog import IconPickerDialog
 from preview_widget import PreviewWidget
 from version import version
 from fontTools.ttLib import TTFont 
-from utils import generate_kicad_sexpr, generate_polygons_logic, scale_polys_to_target_height, apply_anchor_point, sanitize_font_key
+from utils import (
+    generate_kicad_sexpr, 
+    generate_polygons_logic, 
+    scale_polys_to_target_height, 
+    apply_anchor_point, 
+    sanitize_font_key
+)
 
 SYMBOL_MAP = {
     ":gnd:": "\u23DA", ":ohm:": "\u03A9", ":mu:": "\u00B5", ":warn:": "\u26A0",
@@ -25,31 +31,34 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.ui = Ui_MainWindow()
         self.ui.setupUi(self)
-        
-        # =========================================================================
-        # SETUP PREVIEW WIDGET
-        # =========================================================================
-        
-        
-        self.canvas = PreviewWidget()
-        preview_container = self.ui.groupBoxPreview
-        
-        # 2. Tạo Layout cho GroupBox (vật chứa) và nhét Canvas vào
-        # Vì bạn đã xóa graphicsView cũ trong UI, ta chỉ cần add cái mới vào Layout là xong
-        preview_container = self.ui.groupBoxPreview
-        layout = QVBoxLayout(preview_container)
-        layout.setContentsMargins(10, 25, 10, 10) # Căn lề
-        layout.addWidget(self.canvas)
-        # =========================================================================
-
         self.setWindowTitle(f"Text Label Generator v{version}")
+        
+        # Cờ kiểm soát khởi động
+        self.app_ready = False 
 
-        # Dữ liệu Font
+        # =========================================================================
+        # 1. SETUP PREVIEW WIDGET
+        # =========================================================================
+        self.canvas = PreviewWidget()
+        layout = QVBoxLayout(self.ui.groupBoxPreview)
+        layout.setContentsMargins(10, 25, 10, 10) 
+        layout.addWidget(self.canvas)
+
+        # =========================================================================
+        # 2. DATA & TIMERS
+        # =========================================================================
         self.font_library = {}
         self.symbol_font_list = []
         self.current_polys = []
 
-        # --- 1. SETUP UI DATA ---
+        self.preview_timer = QTimer()
+        self.preview_timer.setSingleShot(True)
+        self.preview_timer.setInterval(200) 
+        self.preview_timer.timeout.connect(self.render_preview_worker)
+
+        # =========================================================================
+        # 3. SETUP UI ELEMENTS
+        # =========================================================================
         AlignmentFields = ["Left", "Center", "Right"]
         EdgeFields = ["Square", "Round", "Triangle", "Pointed", "Ribbon_Out", "Ribbon_In", "Trap_Left", "Trap_Right"]
         LayerFields = ["F.SilkS", "F.Paste" , "F.Mask", "F.Cu", "F.Cu/F.Mask"]
@@ -61,74 +70,87 @@ class MainWindow(QMainWindow):
         self.ui.comboLayer.addItems(LayerFields)
         self.ui.comboAnchor.addItems(AnchorFields)
         
-        # Default values
         self.ui.comboAlignment.setCurrentText("Center")
         self.ui.comboLeftEdge.setCurrentText("Square")
         self.ui.comboRightEdge.setCurrentText("Square")
         self.ui.comboLayer.setCurrentText("F.SilkS")
         self.ui.comboAnchor.setCurrentText("Center-Center")
         self.ui.labelFontDir.setWordWrap(True)
-        self.ui.plainTextEdit.setPlainText("Text Label")
 
-        # --- 2. LOAD FONTS ---
+        # =========================================================================
+        # 4. LOAD FONTS & INIT TEXT WITH TAGS
+        # =========================================================================
         self.load_text_fonts(os.path.join("fonts", "texts"))
         self.scan_symbol_fonts(os.path.join("fonts", "symbols"))
 
-        # --- 3. CONNECT SIGNALS ---
+        # Tạo text mặc định
+        initial_text = "Text Label"
+        if self.ui.comboFont.count() > 0:
+            data = self.ui.comboFont.itemData(0)
+            if data:
+                _, key = data
+                initial_text = f"{{{key}}}Text Label{{/{key}}}"
+        
+        self.ui.plainTextEdit.setPlainText(initial_text)
+
+        # =========================================================================
+        # 5. CONNECT SIGNALS
+        # =========================================================================
         self.ui.buttonCopy.clicked.connect(self.button_copy_clicked)
         self.ui.buttonSave.clicked.connect(self.button_save_clicked)
         self.ui.buttonClose.clicked.connect(self.button_close_clicked)
         self.ui.buttonIcon.clicked.connect(self.button_icon_clicked)
 
-        self.ui.plainTextEdit.textChanged.connect(self.render_preview) 
-
-        # Signal thay đổi UI State
+        self.ui.plainTextEdit.textChanged.connect(self.trigger_refresh) 
+        
         self.ui.checkNegative.toggled.connect(self.update_ui_states)
         self.ui.checkNoFrame.toggled.connect(self.update_ui_states)
         
-        # Signal vẽ lại hình
-        self.ui.checkNegative.toggled.connect(self.render_preview)
-        self.ui.checkNoFrame.toggled.connect(self.render_preview)
+        self.ui.checkNegative.toggled.connect(self.trigger_refresh)
+        self.ui.checkNoFrame.toggled.connect(self.trigger_refresh)
+        self.ui.comboAlignment.currentIndexChanged.connect(self.trigger_refresh)
+        self.ui.comboLeftEdge.currentIndexChanged.connect(self.trigger_refresh)
+        self.ui.comboRightEdge.currentIndexChanged.connect(self.trigger_refresh)
+        self.ui.comboLayer.currentIndexChanged.connect(self.trigger_refresh)
+        self.ui.comboAnchor.currentIndexChanged.connect(self.trigger_refresh)
         
-        self.ui.comboAlignment.currentIndexChanged.connect(self.render_preview)
-        self.ui.comboLeftEdge.currentIndexChanged.connect(self.render_preview)
-        self.ui.comboRightEdge.currentIndexChanged.connect(self.render_preview)
-        self.ui.comboLayer.currentIndexChanged.connect(self.render_preview)
-        self.ui.comboAnchor.currentIndexChanged.connect(self.render_preview)
+        # Signal thay đổi font -> Chèn tag vào cuối
         self.ui.comboFont.currentIndexChanged.connect(self.on_font_changed) 
         
         for spin in [self.ui.doubleSpinHeight, self.ui.doubleSpinSpacing, 
                      self.ui.doubleSpinBorder, self.ui.doubleSpinCorner,
                      self.ui.doubleSpinTop, self.ui.doubleSpinBottom,
                      self.ui.doubleSpinLeft, self.ui.doubleSpinRight]:
-            spin.valueChanged.connect(self.render_preview)
+            spin.valueChanged.connect(self.trigger_refresh)
 
-        # --- 4. INIT STATES & RENDER ---
-        self.update_ui_states() # Cập nhật trạng thái disable/enable lần đầu
+        # =========================================================================
+        # 6. FINAL INITIALIZATION
+        # =========================================================================
+        self.update_ui_states() 
         
+        # Init Default font logic
         if self.ui.comboFont.count() > 0:
             self.ui.comboFont.setCurrentIndex(0)
-            self.on_font_changed(0) 
-        else:
-            self.render_preview()
+            data = self.ui.comboFont.itemData(0)
+            if data:
+                _, key = data
+                if key in self.font_library:
+                    self.font_library['default'] = self.font_library[key]
+        
+        self.trigger_refresh()
+        self.app_ready = True
 
     def update_ui_states(self):
-        """
-        Hàm logic quản lý trạng thái Enable/Disable của các control
-        để đúng với logic ban đầu.
-        """
         is_neg = self.ui.checkNegative.isChecked()
         no_frame = self.ui.checkNoFrame.isChecked()
-
-        # 1. Nếu No Frame (Chỉ hiện chữ) -> Tắt hết các tính năng chỉnh khung
         self.ui.groupBoxEdges.setEnabled(not no_frame)
         self.ui.groupBoxPadding.setEnabled(not no_frame)
         self.ui.doubleSpinCorner.setEnabled(not no_frame)
-        self.ui.checkNegative.setEnabled(not no_frame) # Không thể Negative nếu không có khung
-        
-        # 2. Border Width chỉ có tác dụng khi CÓ KHUNG và KHÔNG PHẢI NEGATIVE
-        # (Vì Negative là khung đặc, không có viền)
+        self.ui.checkNegative.setEnabled(not no_frame) 
         self.ui.doubleSpinBorder.setEnabled(not is_neg and not no_frame)
+
+    def trigger_refresh(self):
+        self.preview_timer.start()
 
     def load_text_fonts(self, folder_path):
         base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -137,17 +159,24 @@ class MainWindow(QMainWindow):
         self.ui.comboFont.clear()
         if not os.path.exists(abs_path): return
 
-        for f in os.listdir(abs_path):
-            if f.lower().endswith(('.ttf', '.otf')):
-                full_path = os.path.join(abs_path, f)
-                QFontDatabase.addApplicationFont(full_path)
-                self.ui.comboFont.addItem(f, full_path)
+        files = sorted([f for f in os.listdir(abs_path) if f.lower().endswith(('.ttf', '.otf'))])
+
+        for f in files:
+            full_path = os.path.join(abs_path, f)
+            QFontDatabase.addApplicationFont(full_path)
+            font_key = sanitize_font_key(f)
+            try:
+                ttfont = TTFont(full_path)
+                self.font_library[font_key] = ttfont
+                self.ui.comboFont.addItem(f, (full_path, font_key))
+            except Exception as e:
+                print(f"Error loading font {f}: {e}")
+                
         self.ui.labelFontDir.setText(f"Fonts loaded from: {folder_path}")
 
     def scan_symbol_fonts(self, folder_path):
         base_dir = os.path.dirname(os.path.abspath(__file__))
         abs_path = os.path.join(base_dir, folder_path)
-        
         self.symbol_font_list = [] 
 
         if not os.path.exists(abs_path): return
@@ -167,13 +196,37 @@ class MainWindow(QMainWindow):
                 print(f"Failed to load symbol font {filename}: {e}")
 
     def on_font_changed(self, index):
-        font_path = self.ui.comboFont.itemData(index)
-        if font_path and os.path.exists(font_path):
-            try:
-                ttfont = TTFont(font_path)
-                self.font_library['default'] = ttfont
-                self.render_preview()
-            except: pass
+        """
+        Khi đổi font: 
+        1. Nhảy xuống cuối văn bản.
+        2. Chèn cặp tag.
+        3. Đưa con trỏ vào giữa.
+        """
+        if not self.app_ready: return
+
+        data = self.ui.comboFont.itemData(index)
+        if not data: return
+        _, font_key = data
+
+        cursor = self.ui.plainTextEdit.textCursor()
+        
+        # 1. Di chuyển con trỏ xuống cuối cùng
+        cursor.movePosition(QTextCursor.End)
+        
+        # 2. Tạo chuỗi tag
+        end_tag = f"{{/{font_key}}}"
+        start_tag = f"{{{font_key}}}"
+        
+        # 3. Chèn vào cuối
+        cursor.insertText(start_tag + end_tag)
+        
+        # 4. Lùi lại vào giữa cặp tag
+        cursor.movePosition(QTextCursor.Left, QTextCursor.MoveAnchor, len(end_tag))
+        
+        # 5. Cập nhật giao diện
+        self.ui.plainTextEdit.setTextCursor(cursor)
+        self.ui.plainTextEdit.setFocus()
+        self.trigger_refresh()
 
     def preprocess_text(self, text):
         processed = text
@@ -214,7 +267,7 @@ class MainWindow(QMainWindow):
     def button_close_clicked(self):
         self.close()
     
-    def render_preview(self):
+    def render_preview_worker(self):
         if 'default' not in self.font_library: return
 
         raw_text = self.ui.plainTextEdit.toPlainText()
@@ -243,9 +296,15 @@ class MainWindow(QMainWindow):
             scaled_polys = scale_polys_to_target_height(raw_polys, target_h)
             self.current_polys = apply_anchor_point(scaled_polys, self.ui.comboAnchor.currentText())
             
-            layer_colors = { "F.Cu": "#840000", "B.Cu": "#008400", "F.SilkS": "#00C2C2", "B.SilkS": "#C200C2", "F.Paste": "#848484", "F.Mask": "#840084" }
-            
+            layer_colors = { 
+                "F.Cu": "#840000", "B.Cu": "#008400", 
+                "F.SilkS": "#00C2C2", "B.SilkS": "#C200C2", 
+                "F.Paste": "#848484", "F.Mask": "#840084" 
+            }
+            color = layer_colors.get(self.ui.comboLayer.currentText(), "#F5B041")
+
             if hasattr(self.canvas, 'update_content'):
-                self.canvas.update_content(self.current_polys, color=layer_colors.get(self.ui.comboLayer.currentText(), "#F5B041"))
+                self.canvas.update_content(self.current_polys, color=color)
+                
         except Exception as e:
             print(f"Render Error: {e}")

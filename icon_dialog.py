@@ -5,7 +5,7 @@ from PySide6.QtWidgets import (
     QHeaderView, QAbstractItemView
 )
 from PySide6.QtGui import (
-    QFont, QFontDatabase
+    QFont, QFontDatabase, QTextCursor
 )
 from PySide6.QtCore import Qt
 
@@ -16,9 +16,10 @@ class IconPickerDialog(QDialog):
         self.ui = Ui_Dialog()
         self.ui.setupUi(self)
         
+        # Cờ chặn chèn tag khi setup UI ban đầu
+        self.dialog_ready = False
+        
         # --- 1. SETUP UI ---
-        # Không cần tạo thủ công self.txt_buffer hay move() vị trí nữa
-        # Sử dụng trực tiếp widget có sẵn trong dialog.ui
         self.ui.plainTextEdit.setPlaceholderText("Double-click icons to add them here...")
         
         # --- 2. CẤU HÌNH BẢNG ---
@@ -43,10 +44,7 @@ class IconPickerDialog(QDialog):
         self.ui.buttonPrev.clicked.connect(self.prev_page)
         self.ui.buttonNext.clicked.connect(self.next_page)
 
-        # Click 1 lần: Xem trước vào Label
         self.ui.tableWidget.cellClicked.connect(self.show_char_preview)
-        
-        # Click 2 lần: Cộng dồn vào plainTextEdit
         self.ui.tableWidget.cellDoubleClicked.connect(self.add_icon_to_buffer)
 
         # --- 4. LOAD DỮ LIỆU ---
@@ -55,36 +53,61 @@ class IconPickerDialog(QDialog):
             self.ui.comboFonts.addItem(name, (path, key)) 
             
         if self.ui.comboFonts.count() > 0:
+            # Block signals để tránh gọi on_font_changed 2 lần (1 lần do setCurrentIndex, 1 lần do mình gọi thủ công)
+            self.ui.comboFonts.blockSignals(True)
             self.ui.comboFonts.setCurrentIndex(0)
-            self.on_font_changed(0)
+            self.ui.comboFonts.blockSignals(False)
+
+            # [QUAN TRỌNG] Bật cờ Ready -> Để lần gọi dưới đây sẽ chèn tag ngay lập tức
+            self.dialog_ready = True
+            self.on_font_changed(0) 
+        else:
+            self.dialog_ready = True
 
     def on_font_changed(self, index):
         data = self.ui.comboFonts.itemData(index)
         if not data: return
         path, key = data
         
-        # Load Font hiển thị
+        # --- 1. Render lại bảng ký tự ---
         font_id = QFontDatabase.addApplicationFont(path)
         families = QFontDatabase.applicationFontFamilies(font_id)
-        if not families: return
-        self.display_font = QFont(families[0])
-        self.display_font.setPixelSize(24) 
-        
-        try:
-            ttfont = TTFont(path)
-            cmap = ttfont.getBestCmap()
-            self.all_chars = sorted([chr(c) for c in cmap.keys() if c > 32])
+        if families:
+            self.display_font = QFont(families[0])
+            self.display_font.setPixelSize(24) 
             
-            total_items = len(self.all_chars)
-            if total_items > 0:
-                self.total_pages = (total_items + self.items_per_page - 1) // self.items_per_page
-            else:
-                self.total_pages = 1
+            try:
+                ttfont = TTFont(path)
+                cmap = ttfont.getBestCmap()
+                self.all_chars = sorted([chr(c) for c in cmap.keys() if c > 32])
+                
+                total_items = len(self.all_chars)
+                if total_items > 0:
+                    self.total_pages = (total_items + self.items_per_page - 1) // self.items_per_page
+                else:
+                    self.total_pages = 1
+                
+                self.current_page = 0
+                self.render_current_page()
+            except Exception as e:
+                print(f"Error reading font: {e}")
+
+        # --- 2. Tự động chèn tag khi đổi Font (Và khi khởi tạo) ---
+        if self.dialog_ready:
+            cursor = self.ui.plainTextEdit.textCursor()
+            cursor.movePosition(QTextCursor.End)
             
-            self.current_page = 0
-            self.render_current_page()
-        except Exception as e:
-            print(f"Error reading font: {e}")
+            # Tạo tag
+            start_tag = f" {{{key}}}"
+            end_tag = f"{{/{key}}}"
+            
+            cursor.insertText(start_tag + end_tag)
+            
+            # Đưa con trỏ vào giữa
+            cursor.movePosition(QTextCursor.Left, QTextCursor.MoveAnchor, len(end_tag))
+            
+            self.ui.plainTextEdit.setTextCursor(cursor)
+            self.ui.plainTextEdit.setFocus()
 
     def render_current_page(self):
         self.ui.tableWidget.clear()
@@ -127,7 +150,6 @@ class IconPickerDialog(QDialog):
             self.render_current_page()
 
     def show_char_preview(self, row, col):
-        """Khi click đơn: Hiện thông tin lên Label"""
         item = self.ui.tableWidget.item(row, col)
         if item:
             char = item.text()
@@ -139,23 +161,17 @@ class IconPickerDialog(QDialog):
             self.ui.labelText.setFont(preview_font)
 
     def add_icon_to_buffer(self, row, col):
-        """Khi Double Click: Thêm Tag vào ô plainTextEdit có sẵn"""
+        """
+        Khi Double Click: CHỈ chèn ký tự, KHÔNG chèn tag.
+        """
         item = self.ui.tableWidget.item(row, col)
         if not item: return
         
         char = item.text()
         
-        # Lấy Key Font
-        data = self.ui.comboFonts.currentData()
-        key = data[1] if data else "default"
-        
-        # Tạo chuỗi Tag
-        tagged_text = f" {{{key}}}{char}{{/{key}}} "
-        
-        # Chèn vào ô plainTextEdit
-        self.ui.plainTextEdit.insertPlainText(tagged_text)
+        # Chỉ chèn ký tự vào vị trí con trỏ hiện tại (thường là giữa cặp tag vừa tạo)
+        self.ui.plainTextEdit.insertPlainText(char)
         self.ui.plainTextEdit.setFocus()
 
     def get_result(self):
-        """Trả về toàn bộ nội dung trong plainTextEdit"""
         return self.ui.plainTextEdit.toPlainText()

@@ -17,8 +17,8 @@
    <widget class="QPushButton" name="buttonSave">
     <property name="geometry">
      <rect>
-      <x>510</x>
-      <y>710</y>
+      <x>540</x>
+      <y>870</y>
       <width>150</width>
       <height>26</height>
      </rect>
@@ -36,8 +36,8 @@
    <widget class="QPushButton" name="buttonCopy">
     <property name="geometry">
      <rect>
-      <x>680</x>
-      <y>710</y>
+      <x>710</x>
+      <y>870</y>
       <width>150</width>
       <height>26</height>
      </rect>
@@ -67,8 +67,8 @@
    <widget class="QPushButton" name="buttonClose">
     <property name="geometry">
      <rect>
-      <x>430</x>
-      <y>790</y>
+      <x>460</x>
+      <y>950</y>
       <width>80</width>
       <height>26</height>
      </rect>
@@ -86,8 +86,8 @@
    <widget class="QGroupBox" name="groupBoxInput">
     <property name="geometry">
      <rect>
-      <x>310</x>
-      <y>300</y>
+      <x>340</x>
+      <y>460</y>
       <width>481</width>
       <height>131</height>
      </rect>
@@ -111,8 +111,8 @@
      <rect>
       <x>70</x>
       <y>40</y>
-      <width>700</width>
-      <height>251</height>
+      <width>800</width>
+      <height>400</height>
      </rect>
     </property>
     <property name="title">
@@ -122,8 +122,8 @@
    <widget class="QLabel" name="labelFontDir">
     <property name="geometry">
      <rect>
-      <x>70</x>
-      <y>700</y>
+      <x>100</x>
+      <y>860</y>
       <width>401</width>
       <height>51</height>
      </rect>
@@ -135,8 +135,8 @@
    <widget class="QLabel" name="labelFont">
     <property name="geometry">
      <rect>
-      <x>550</x>
-      <y>590</y>
+      <x>580</x>
+      <y>750</y>
       <width>66</width>
       <height>18</height>
      </rect>
@@ -148,8 +148,8 @@
    <widget class="QComboBox" name="comboFont">
     <property name="geometry">
      <rect>
-      <x>550</x>
-      <y>630</y>
+      <x>580</x>
+      <y>790</y>
       <width>221</width>
       <height>26</height>
      </rect>
@@ -158,8 +158,8 @@
    <widget class="QPushButton" name="buttonIcon">
     <property name="geometry">
      <rect>
-      <x>660</x>
-      <y>580</y>
+      <x>690</x>
+      <y>740</y>
       <width>94</width>
       <height>26</height>
      </rect>
@@ -171,8 +171,8 @@
    <widget class="QGroupBox" name="groupBoxFootprint">
     <property name="geometry">
      <rect>
-      <x>540</x>
-      <y>460</y>
+      <x>570</x>
+      <y>620</y>
       <width>251</width>
       <height>103</height>
      </rect>
@@ -230,8 +230,8 @@
    <widget class="QGroupBox" name="groupBoxPadding">
     <property name="geometry">
      <rect>
-      <x>300</x>
-      <y>440</y>
+      <x>330</x>
+      <y>600</y>
       <width>218</width>
       <height>251</height>
      </rect>
@@ -383,8 +383,8 @@
    <widget class="QGroupBox" name="groupBoxEdges">
     <property name="geometry">
      <rect>
-      <x>70</x>
-      <y>300</y>
+      <x>100</x>
+      <y>460</y>
       <width>216</width>
       <height>121</height>
      </rect>
@@ -442,8 +442,8 @@
    <widget class="QGroupBox" name="groupBoxGeometry">
     <property name="geometry">
      <rect>
-      <x>70</x>
-      <y>430</y>
+      <x>100</x>
+      <y>590</y>
       <width>211</width>
       <height>261</height>
      </rect>
