@@ -4,8 +4,9 @@ import re
 import os
 from fontTools.ttLib import TTFont
 from fontTools.pens.basePen import BasePen
-from shapely.geometry import Polygon
+from shapely.geometry import Polygon, MultiPolygon
 from shapely.geometry.polygon import orient 
+from shapely.ops import unary_union 
 
 class SimplePathPen(BasePen):
     def __init__(self, glyphSet, steps=12):
@@ -93,21 +94,6 @@ def organize_and_stitch(contours):
         final_paths.append(current_shell)
     return final_paths
 
-def classify_contours(contours):
-    if not contours: return [], []
-    valid_contours = [c for c in contours if len(c) >= 3]
-    if not valid_contours: return []
-    polys = [Polygon(c) for c in valid_contours]
-    n = len(polys); is_inner = [False] * n
-    sorted_idx = sorted(range(n), key=lambda i: polys[i].area, reverse=True)
-    for i in range(len(sorted_idx)):
-        parent_i = sorted_idx[i]
-        for j in range(i + 1, len(sorted_idx)):
-            child_j = sorted_idx[j]
-            if not is_inner[child_j] and polys[parent_i].contains(polys[child_j]):
-                is_inner[child_j] = True
-    return [valid_contours[i] for i in range(n) if not is_inner[i]], [valid_contours[i] for i in range(n) if is_inner[i]]
-
 def center_polygons_at_origin(polys):
     if not polys: return []
     all_pts = [p for poly in polys for p in poly]
@@ -162,7 +148,6 @@ def parse_rich_text(text_line, font_library, default_font_key='default'):
             tag = token[1:-1]
             if tag in font_library: current_font_key = tag; font_stack.append(tag)
             continue
-        # Retrieve Font Object from Tuple (TTFont, Path)
         font_data = font_library.get(current_font_key, font_library.get(default_font_key))
         font_obj = font_data[0] if isinstance(font_data, tuple) else font_data
         segments.append((token, font_obj))
@@ -199,7 +184,7 @@ def generate_polygons_logic(text, font_library, default_font_key, pad_top, pad_b
         line_widths.append(total_w)
     max_width = max(line_widths) if line_widths else 0
 
-    # 2. RENDER
+    # 2. RENDER CHARACTERS TO CONTOURS
     for line_idx, segments in enumerate(parsed_lines):
         cursor_x = get_start_x(align, line_widths[line_idx], max_width)
         cursor_y = line_idx * line_step_y
@@ -239,14 +224,18 @@ def generate_polygons_logic(text, font_library, default_font_key, pad_top, pad_b
                         if len(cleaned) > 2:
                             processed_char.append(cleaned)
                             if not is_negative: all_pts_text_solid.extend(cleaned)
+                    
                     if not is_negative: all_text_raw_contours.extend(organize_and_stitch(processed_char))
                     else: all_text_raw_contours.extend(processed_char)
+                    
                 cursor_x += hmtx[glyph_name][0] * current_scale
 
     if no_frame: return center_polygons_at_origin(all_text_raw_contours)
 
     # 3. SHELL & CAPS
-    pts_for_box = [p for cnt in all_text_raw_contours for p in cnt] if is_negative else all_pts_text_solid
+    # Lấy points để tính bao (Bounding Box)
+    pts_for_box = [p for cnt in all_text_raw_contours for p in cnt]
+    
     if not pts_for_box: return []
     min_x = min(p[0] for p in pts_for_box); max_x = max(p[0] for p in pts_for_box)
     min_y = min(p[1] for p in pts_for_box); max_y = max(p[1] for p in pts_for_box)
@@ -278,17 +267,81 @@ def generate_polygons_logic(text, font_library, default_font_key, pad_top, pad_b
     safe_r = min(corner_radius, current_box_height/2.1)
     shell_pts = apply_corner_radius_to_poly(shell_pts, safe_r)
     
-    # 4. BOOLEAN
+    # --- 4. BOOLEAN & OUTPUT (NEGATIVE LOGIC FIXED) ---
+    
     if is_negative:
         if not all_text_raw_contours: return []
-        text_outers, text_inners = classify_contours(all_text_raw_contours)
-        final_bg = force_orientation(shell_pts, is_ccw=True)
-        for letter in text_outers:
-            hole_letter = force_orientation(letter, is_ccw=False)
-            final_bg = stitch_hole_to_shell(final_bg, hole_letter)
-        clean_inners = [force_orientation(inner, is_ccw=True) for inner in text_inners]
-        return center_polygons_at_origin([final_bg] + clean_inners)
+        
+        # B1: Chuyển tất cả contour thành Polygon
+        all_polys = []
+        for cnt in all_text_raw_contours:
+            if len(cnt) >= 3:
+                p = Polygon(cnt)
+                if not p.is_valid: p = p.buffer(0)
+                all_polys.append(p)
+        
+        # B2: Phân loại đâu là SOLID (nét vẽ), đâu là HOLE (lỗ thủng)
+        # Nguyên tắc: Nếu Polygon A nằm TRONG Polygon B, thì A là lỗ thủng của B.
+        # Nếu Polygon C nằm TRONG A, thì C lại là đảo (Solid).
+        
+        # Sắp xếp theo diện tích giảm dần để xử lý thằng to (bao ngoài) trước
+        all_polys.sort(key=lambda p: p.area, reverse=True)
+        
+        solids = []
+        holes = []
+        
+        for p in all_polys:
+            # Đếm xem p nằm trong bao nhiêu thằng solid đã tìm thấy
+            depth = 0
+            # Check containment trong các solid đã biết
+            for parent in solids:
+                if parent.contains(p): depth += 1
+            
+            # Check containment trong các hole đã biết (để xử lý đảo nằm trong hole)
+            for parent in holes:
+                if parent.contains(p): depth += 1
+            
+            # Depth chẵn (0, 2...) => Solid (Nét vẽ)
+            # Depth lẻ (1, 3...) => Hole (Lỗ thủng)
+            if depth % 2 == 0:
+                solids.append(p)
+            else:
+                holes.append(p)
+        
+        # B3: Hợp nhất (Union) các Solids với nhau (Fix lỗi Roboto nét chồng)
+        merged_solids = unary_union(solids)
+        
+        # B4: Hợp nhất (Union) các Holes với nhau
+        merged_holes = unary_union(holes)
+        
+        # B5: Tạo hình dạng chữ chuẩn = Solids - Holes
+        # (Lúc này chữ "A" sẽ là hình tam giác đặc có đục lỗ tam giác nhỏ)
+        final_text_shape = merged_solids.difference(merged_holes)
+        
+        # B6: Tạo khung nền
+        shell_poly = Polygon(shell_pts)
+        if not shell_poly.is_valid: shell_poly = shell_poly.buffer(0)
+
+        # B7: Kết quả cuối = Khung nền - Hình chữ chuẩn
+        final_result = shell_poly.difference(final_text_shape)
+        
+        # B8: Xuất ra contours
+        final_contours = []
+        if final_result.is_empty: return []
+        
+        geoms = [final_result] if final_result.geom_type == 'Polygon' else final_result.geoms
+        
+        for geom in geoms:
+            ext = list(geom.exterior.coords)
+            if len(ext) > 2: final_contours.append(ext)
+            for interior in geom.interiors:
+                hole = list(interior.coords)
+                if len(hole) > 2: final_contours.append(hole)
+
+        return center_polygons_at_origin(final_contours)
+
     else:
+        # Logic cho Positive (giữ nguyên)
         outer_poly = Polygon(shell_pts)
         inner_poly = outer_poly.buffer(-border_width, join_style=2) 
         try: frame_poly = outer_poly.difference(inner_poly)
@@ -351,6 +404,5 @@ def generate_kicad_sexpr(polys, footprint_name="KiBuzzard_Gen", layer="F.Cu"):
 
 def sanitize_font_key(filename):
     name = os.path.splitext(filename)[0]
-    # Thay thế ký tự không phải chữ số thành _
     clean_name = re.sub(r'[^a-zA-Z0-9]', '_', name)
     return clean_name

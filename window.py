@@ -31,9 +31,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.ui = Ui_MainWindow()
         self.ui.setupUi(self)
-        self.setWindowTitle(f"Text Label Generator v{version}")
         
-        # Cờ kiểm soát khởi động
         self.app_ready = False 
 
         # =========================================================================
@@ -80,10 +78,11 @@ class MainWindow(QMainWindow):
         # =========================================================================
         # 4. LOAD FONTS & INIT TEXT WITH TAGS
         # =========================================================================
+        # Load fonts TRƯỚC khi set text để có data
         self.load_text_fonts(os.path.join("fonts", "texts"))
         self.scan_symbol_fonts(os.path.join("fonts", "symbols"))
 
-        # Tạo text mặc định
+        # Tạo text mặc định có kèm Tag của font đầu tiên
         initial_text = "Text Label"
         if self.ui.comboFont.count() > 0:
             data = self.ui.comboFont.itemData(0)
@@ -114,7 +113,7 @@ class MainWindow(QMainWindow):
         self.ui.comboLayer.currentIndexChanged.connect(self.trigger_refresh)
         self.ui.comboAnchor.currentIndexChanged.connect(self.trigger_refresh)
         
-        # Signal thay đổi font -> Chèn tag vào cuối
+        # Signal thay đổi font -> Chèn tag
         self.ui.comboFont.currentIndexChanged.connect(self.on_font_changed) 
         
         for spin in [self.ui.doubleSpinHeight, self.ui.doubleSpinSpacing, 
@@ -128,7 +127,7 @@ class MainWindow(QMainWindow):
         # =========================================================================
         self.update_ui_states() 
         
-        # Init Default font logic
+        # Set default font cho renderer
         if self.ui.comboFont.count() > 0:
             self.ui.comboFont.setCurrentIndex(0)
             data = self.ui.comboFont.itemData(0)
@@ -167,7 +166,8 @@ class MainWindow(QMainWindow):
             font_key = sanitize_font_key(f)
             try:
                 ttfont = TTFont(full_path)
-                self.font_library[font_key] = ttfont
+                # [QUAN TRỌNG] Lưu thêm loại 'text' vào tuple
+                self.font_library[font_key] = (ttfont, full_path, 'text')
                 self.ui.comboFont.addItem(f, (full_path, font_key))
             except Exception as e:
                 print(f"Error loading font {f}: {e}")
@@ -190,42 +190,33 @@ class MainWindow(QMainWindow):
             font_key = sanitize_font_key(filename)
             try:
                 ttfont = TTFont(full_path)
-                self.font_library[font_key] = ttfont
+                # [QUAN TRỌNG] Lưu thêm loại 'symbol' vào tuple
+                self.font_library[font_key] = (ttfont, full_path, 'symbol')
                 self.symbol_font_list.append((filename, full_path, font_key))
             except Exception as e:
                 print(f"Failed to load symbol font {filename}: {e}")
 
     def on_font_changed(self, index):
-        """
-        Khi đổi font: 
-        1. Nhảy xuống cuối văn bản.
-        2. Chèn cặp tag.
-        3. Đưa con trỏ vào giữa.
-        """
         if not self.app_ready: return
 
         data = self.ui.comboFont.itemData(index)
         if not data: return
         _, font_key = data
+        
+        # Cập nhật default font cho renderer
+        if font_key in self.font_library:
+            self.font_library['default'] = self.font_library[font_key]
 
+        # Logic thêm tag
         cursor = self.ui.plainTextEdit.textCursor()
-        
-        # 1. Di chuyển con trỏ xuống cuối cùng
         cursor.movePosition(QTextCursor.End)
-        
-        # 2. Tạo chuỗi tag
         end_tag = f"{{/{font_key}}}"
         start_tag = f"{{{font_key}}}"
-        
-        # 3. Chèn vào cuối
         cursor.insertText(start_tag + end_tag)
-        
-        # 4. Lùi lại vào giữa cặp tag
         cursor.movePosition(QTextCursor.Left, QTextCursor.MoveAnchor, len(end_tag))
-        
-        # 5. Cập nhật giao diện
         self.ui.plainTextEdit.setTextCursor(cursor)
         self.ui.plainTextEdit.setFocus()
+        
         self.trigger_refresh()
 
     def preprocess_text(self, text):
