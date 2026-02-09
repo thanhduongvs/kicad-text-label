@@ -1,0 +1,38 @@
+{
+    "$schema": "https://go.kicad.org/pcm/schemas/v1",
+    "name": "Component Position Exporter",
+    "description": "Generates a Component Position CSV file",
+    "description_full": "Generates a Component Position CSV file with DNP support and Natural Sorting.",
+    "identifier": "vn.thanhduongvs.component-position-exporter",
+    "type": "plugin",
+    "runtime": {
+        "type": "python",
+        "min_version": "3.10"
+    },
+    "author": {
+        "name": "Thanh Duong",
+        "contact": {
+            "github": "https://github.com/thanhduongvs"
+        }
+    },
+    "license": "MIT",
+    "resources": {
+        "homepage": "https://github.com/thanhduongvs/kicad-component-position"
+    },
+    "versions": [
+        {
+            "version": "VERSION",
+            "status": "stable",
+            "kicad_version": "9.0",
+            "runtime": "ipc",
+            "download_sha256": "SHA256",
+            "download_size": DOWNLOAD_SIZE,
+            "download_url": "https://raw.githubusercontent.com/thanhduongvs/kicad-component-position/main/pcm/component-position-exporter-VERSION.zip",
+            "install_size": INSTALL_SIZE,
+            "platforms": [
+                "linux",
+                "windows"
+            ]
+        }
+    ]
+}

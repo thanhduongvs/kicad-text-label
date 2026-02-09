@@ -1,1 +1,1 @@
-# kicad-text-label
+# Text Label Generator
