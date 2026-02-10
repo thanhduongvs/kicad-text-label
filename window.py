@@ -79,11 +79,11 @@ class MainWindow(QMainWindow):
         # =========================================================================
         # 4. LOAD FONTS & INIT TEXT WITH TAGS
         # =========================================================================
-        # Load fonts TRƯỚC khi set text để có data
+        # Load fonts BEFORE setting text to ensure data availability
         self.load_text_fonts(os.path.join("fonts", "texts"))
         self.scan_symbol_fonts(os.path.join("fonts", "symbols"))
 
-        # Tạo text mặc định có kèm Tag của font đầu tiên
+        # Create default text including the Tag of the first font
         initial_text = "Text Label"
         if self.ui.comboFont.count() > 0:
             data = self.ui.comboFont.itemData(0)
@@ -101,6 +101,7 @@ class MainWindow(QMainWindow):
         self.ui.buttonClose.clicked.connect(self.button_close_clicked)
         self.ui.buttonIcon.clicked.connect(self.button_icon_clicked)
         self.ui.buttonSymbol.clicked.connect(self.button_symbol_clicked)
+        self.ui.buttonClear.clicked.connect(self.button_clear_clicked)
 
         self.ui.plainTextEdit.textChanged.connect(self.trigger_refresh) 
         
@@ -115,7 +116,7 @@ class MainWindow(QMainWindow):
         self.ui.comboLayer.currentIndexChanged.connect(self.trigger_refresh)
         self.ui.comboAnchor.currentIndexChanged.connect(self.trigger_refresh)
         
-        # Signal thay đổi font -> Chèn tag
+        # Signal for font change -> Insert tag
         self.ui.comboFont.currentIndexChanged.connect(self.on_font_changed) 
         
         for spin in [self.ui.doubleSpinHeight, self.ui.doubleSpinSpacing, 
@@ -129,7 +130,7 @@ class MainWindow(QMainWindow):
         # =========================================================================
         self.update_ui_states() 
         
-        # Set default font cho renderer
+        # Set default font for renderer
         if self.ui.comboFont.count() > 0:
             self.ui.comboFont.setCurrentIndex(0)
             data = self.ui.comboFont.itemData(0)
@@ -168,7 +169,7 @@ class MainWindow(QMainWindow):
             font_key = sanitize_font_key(f)
             try:
                 ttfont = TTFont(full_path)
-                # [QUAN TRỌNG] Lưu thêm loại 'text' vào tuple
+                # [IMPORTANT] Store 'text' type in the tuple
                 self.font_library[font_key] = (ttfont, full_path, 'text')
                 self.ui.comboFont.addItem(f, (full_path, font_key))
             except Exception as e:
@@ -192,7 +193,7 @@ class MainWindow(QMainWindow):
             font_key = sanitize_font_key(filename)
             try:
                 ttfont = TTFont(full_path)
-                # [QUAN TRỌNG] Lưu thêm loại 'symbol' vào tuple
+                # [IMPORTANT] Store 'symbol' type in the tuple
                 self.font_library[font_key] = (ttfont, full_path, 'symbol')
                 self.symbol_font_list.append((filename, full_path, font_key))
             except Exception as e:
@@ -205,11 +206,11 @@ class MainWindow(QMainWindow):
         if not data: return
         _, font_key = data
         
-        # Cập nhật default font cho renderer
+        # Update default font for renderer
         if font_key in self.font_library:
             self.font_library['default'] = self.font_library[font_key]
 
-        # Logic thêm tag
+        # Tag insertion logic
         cursor = self.ui.plainTextEdit.textCursor()
         cursor.movePosition(QTextCursor.End)
         end_tag = f"{{/{font_key}}}"
@@ -263,6 +264,42 @@ class MainWindow(QMainWindow):
         for k, v in SYMBOL_MAP.items():
             menu.addAction(f"{v} {k}").triggered.connect(lambda c, s=k: self.insert_symbol(s))
         menu.exec(self.ui.buttonSymbol.mapToGlobal(QPointF(0, self.ui.buttonSymbol.height()).toPoint()))
+    
+    def button_clear_clicked(self):
+        # 1. Clear all existing content
+        self.ui.plainTextEdit.setPlainText("")
+        
+        # 2. Check if app is ready
+        if not self.app_ready: return
+        
+        # 3. Get data from selected Font (Use currentData instead of currentText)
+        data = self.ui.comboFont.currentData()
+        if not data: return
+        
+        _, font_key = data
+        
+        # 4. Update default font for renderer (for immediate correct preview)
+        if font_key in self.font_library:
+            self.font_library['default'] = self.font_library[font_key]
+
+        # 5. Create and insert new tag pair
+        cursor = self.ui.plainTextEdit.textCursor()
+        cursor.movePosition(QTextCursor.End)
+        
+        start_tag = f"{{{font_key}}}"
+        end_tag = f"{{/{font_key}}}"
+        
+        # Insert tag pair: {Font}{/Font}
+        cursor.insertText(start_tag + end_tag)
+        
+        # 6. Move cursor back to between the tags
+        cursor.movePosition(QTextCursor.Left, QTextCursor.MoveAnchor, len(end_tag))
+        
+        self.ui.plainTextEdit.setTextCursor(cursor)
+        self.ui.plainTextEdit.setFocus()
+        
+        # 7. Trigger Preview refresh
+        self.trigger_refresh()
 
     def insert_symbol(self, symbol_key):
         self.ui.plainTextEdit.insertPlainText(symbol_key + " ")

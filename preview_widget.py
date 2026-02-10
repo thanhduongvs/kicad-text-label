@@ -4,7 +4,7 @@ from PySide6.QtCore import Qt, QPointF
 
 class PreviewWidget(QGraphicsView):
     def __init__(self, parent=None):
-        super().__init__(parent) # Thêm parent để tương thích tốt hơn với Qt Designer
+        super().__init__(parent) # Add parent for better compatibility with Qt Designer
         
         self.scene = QGraphicsScene()
         self.setScene(self.scene)
@@ -12,7 +12,7 @@ class PreviewWidget(QGraphicsView):
         self.setDragMode(QGraphicsView.ScrollHandDrag)
         self.setBackgroundBrush(QBrush(QColor("#2c3e50")))
         
-        # Tắt thanh cuộn để giao diện sạch hơn (vì ta luôn auto-fit)
+        # Disable scrollbars for a cleaner interface (since we always auto-fit)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
 
@@ -20,10 +20,10 @@ class PreviewWidget(QGraphicsView):
         self.scene.addItem(self.path_item)
         self.path_item.setPen(QPen(Qt.NoPen))
         
-        # Crosshair (Tâm 0,0)
+        # Crosshair (Center 0,0)
         pen_origin = QPen(QColor("#e74c3c")) 
         pen_origin.setWidth(0)
-        line_x = QGraphicsLineItem(-1, 0, 1, 0) # Kéo dài ra một chút (-5 đến 5) cho dễ nhìn
+        line_x = QGraphicsLineItem(-1, 0, 1, 0) # Extend slightly (-5 to 5) for better visibility
         line_y = QGraphicsLineItem(0, -1, 0, 1)
         line_x.setPen(pen_origin)
         line_y.setPen(pen_origin)
@@ -35,8 +35,8 @@ class PreviewWidget(QGraphicsView):
         
         qt_path = QPainterPath()
         
-        # [QUAN TRỌNG] Dòng này sửa lỗi hiển thị font Roboto:
-        # Qt.WindingFill giúp tô màu đúng các vùng giao nhau của glyphs
+        # [IMPORTANT] This line fixes display issues with Roboto font:
+        # Qt.WindingFill helps correctly fill intersecting areas of glyphs
         qt_path.setFillRule(Qt.WindingFill) 
 
         for poly_pts in polys:
@@ -45,26 +45,26 @@ class PreviewWidget(QGraphicsView):
             for x, y in poly_pts: 
                 qpoly.append(QPointF(x, y))
             qt_path.addPolygon(qpoly)
-            qt_path.closeSubpath() # Đóng path để tô màu chuẩn
+            qt_path.closeSubpath() # Close path for accurate filling
             
         self.path_item.setPath(qt_path)
         
-        # --- LOGIC AUTO ZOOM (Giữ nguyên từ code của bạn) ---
+        # --- AUTO ZOOM LOGIC (Kept from your code) ---
         rect = qt_path.boundingRect()
         if not rect.isEmpty():
-            # Cập nhật SceneRect để scroll hoạt động đúng vùng
+            # Update SceneRect so scrolling works in the correct area
             self.scene.setSceneRect(rect.adjusted(-20, -20, 20, 20))
             
-            # Zoom vừa khít với item (path chữ)
+            # Zoom to fit the item (text path)
             self.fitInView(self.path_item, Qt.KeepAspectRatio)
             
-            # Thu nhỏ lại 90% để tạo lề thoáng mắt
+            # Scale down to 90% to create visual margins
             self.scale(0.9, 0.9)
 
     def resizeEvent(self, event):
         """
-        Thêm sự kiện này để khi bạn kéo giãn cửa sổ phần mềm,
-        hình ảnh cũng tự động zoom to theo (giữ nguyên logic Auto-fit)
+        Add this event so that when the window is resized,
+        the image automatically zooms to fit (keeping the Auto-fit logic)
         """
         super().resizeEvent(event)
         if self.path_item.path().elementCount() > 0:
@@ -72,6 +72,6 @@ class PreviewWidget(QGraphicsView):
              self.scale(0.9, 0.9)
 
     def wheelEvent(self, event):
-        # Giữ nguyên logic zoom chuột của bạn
+        # Keep your mouse zoom logic
         factor = 1.15 if event.angleDelta().y() > 0 else 1/1.15
         self.scale(factor, factor)

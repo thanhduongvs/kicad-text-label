@@ -16,13 +16,13 @@ class IconPickerDialog(QDialog):
         self.ui = Ui_Dialog()
         self.ui.setupUi(self)
         
-        # Cờ chặn chèn tag khi setup UI ban đầu
+        # Flag to block tag insertion during initial UI setup
         self.dialog_ready = False
         
-        # --- 1. SETUP UI ---
+        # --- 1. UI SETUP ---
         self.ui.plainTextEdit.setPlaceholderText("Double-click icons to add them here...")
         
-        # --- 2. CẤU HÌNH BẢNG ---
+        # --- 2. TABLE CONFIGURATION ---
         self.items_per_page = 350
         self.current_page = 0
         self.total_pages = 0
@@ -38,7 +38,7 @@ class IconPickerDialog(QDialog):
         self.ui.tableWidget.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
         self.ui.tableWidget.verticalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
 
-        # --- 3. SỰ KIỆN ---
+        # --- 3. EVENTS ---
         self.ui.buttonOK.clicked.connect(self.accept)
         self.ui.comboFonts.currentIndexChanged.connect(self.on_font_changed) 
         self.ui.buttonPrev.clicked.connect(self.prev_page)
@@ -49,18 +49,18 @@ class IconPickerDialog(QDialog):
         self.ui.tableWidget.cellClicked.connect(self.show_char_preview)
         self.ui.tableWidget.cellDoubleClicked.connect(self.add_icon_to_buffer)
 
-        # --- 4. LOAD DỮ LIỆU ---
+        # --- 4. LOAD DATA ---
         self.ui.comboFonts.clear()
         for name, path, key in font_list:
             self.ui.comboFonts.addItem(name, (path, key)) 
             
         if self.ui.comboFonts.count() > 0:
-            # Block signals để tránh gọi on_font_changed 2 lần (1 lần do setCurrentIndex, 1 lần do mình gọi thủ công)
+            # Block signals to avoid calling on_font_changed twice (once by setCurrentIndex, once manually called)
             self.ui.comboFonts.blockSignals(True)
             self.ui.comboFonts.setCurrentIndex(0)
             self.ui.comboFonts.blockSignals(False)
 
-            # [QUAN TRỌNG] Bật cờ Ready -> Để lần gọi dưới đây sẽ chèn tag ngay lập tức
+            # [IMPORTANT] Enable Ready flag -> So the call below will insert tags immediately
             self.dialog_ready = True
             self.on_font_changed(0) 
         else:
@@ -71,7 +71,7 @@ class IconPickerDialog(QDialog):
         if not data: return
         path, key = data
         
-        # --- 1. Render lại bảng ký tự ---
+        # --- 1. Re-render character table ---
         font_id = QFontDatabase.addApplicationFont(path)
         families = QFontDatabase.applicationFontFamilies(font_id)
         if families:
@@ -94,18 +94,18 @@ class IconPickerDialog(QDialog):
             except Exception as e:
                 print(f"Error reading font: {e}")
 
-        # --- 2. Tự động chèn tag khi đổi Font (Và khi khởi tạo) ---
+        # --- 2. Automatically insert tag when changing Font (And on initialization) ---
         if self.dialog_ready:
             cursor = self.ui.plainTextEdit.textCursor()
             cursor.movePosition(QTextCursor.End)
             
-            # Tạo tag
+            # Create tags
             start_tag = f" {{{key}}}"
             end_tag = f"{{/{key}}}"
             
             cursor.insertText(start_tag + end_tag)
             
-            # Đưa con trỏ vào giữa
+            # Move cursor to the middle (between tags)
             cursor.movePosition(QTextCursor.Left, QTextCursor.MoveAnchor, len(end_tag))
             
             self.ui.plainTextEdit.setTextCursor(cursor)
@@ -152,8 +152,53 @@ class IconPickerDialog(QDialog):
             self.render_current_page()
     
     def clear_text(self):
+        # 1. Clear text box
         self.ui.plainTextEdit.setPlainText("")
-        self.on_font_changed(0)
+        
+        # 2. Get current font data
+        data = self.ui.comboFonts.currentData()
+        if not data: return
+        path, key = data
+        
+        # --- 3. Re-render character table (Reset to Page 0) ---
+        font_id = QFontDatabase.addApplicationFont(path)
+        families = QFontDatabase.applicationFontFamilies(font_id)
+        if families:
+            self.display_font = QFont(families[0])
+            self.display_font.setPixelSize(24) 
+            
+            try:
+                ttfont = TTFont(path)
+                cmap = ttfont.getBestCmap()
+                self.all_chars = sorted([chr(c) for c in cmap.keys() if c > 32])
+                
+                total_items = len(self.all_chars)
+                if total_items > 0:
+                    self.total_pages = (total_items + self.items_per_page - 1) // self.items_per_page
+                else:
+                    self.total_pages = 1
+                
+                self.current_page = 0
+                self.render_current_page()
+            except Exception as e:
+                print(f"Error reading font: {e}")
+
+        # --- 4. Automatically insert tag ---
+        if self.dialog_ready:
+            cursor = self.ui.plainTextEdit.textCursor()
+            cursor.movePosition(QTextCursor.End)
+            
+            # Create tags
+            start_tag = f" {{{key}}}"
+            end_tag = f"{{/{key}}}"
+            
+            cursor.insertText(start_tag + end_tag)
+            
+            # Move cursor to the middle (between tags)
+            cursor.movePosition(QTextCursor.Left, QTextCursor.MoveAnchor, len(end_tag))
+            
+            self.ui.plainTextEdit.setTextCursor(cursor)
+            self.ui.plainTextEdit.setFocus()
 
     def show_char_preview(self, row, col):
         item = self.ui.tableWidget.item(row, col)
@@ -168,14 +213,14 @@ class IconPickerDialog(QDialog):
 
     def add_icon_to_buffer(self, row, col):
         """
-        Khi Double Click: CHỈ chèn ký tự, KHÔNG chèn tag.
+        On Double Click: ONLY insert character, DO NOT insert tag.
         """
         item = self.ui.tableWidget.item(row, col)
         if not item: return
         
         char = item.text()
         
-        # Chỉ chèn ký tự vào vị trí con trỏ hiện tại (thường là giữa cặp tag vừa tạo)
+        # Only insert character at current cursor position (usually between the newly created tags)
         self.ui.plainTextEdit.insertPlainText(char)
         self.ui.plainTextEdit.setFocus()
 

@@ -95,11 +95,11 @@ def sanitize_font_key(filename):
 # --- RASTERIZATION TO POLYGONS (FIXED & ROBUST) ---
 
 def raster_to_polygons(painter_path, resolution=40.0):
-    # [FIX 1] Dùng boundingRect() thay vì controlPointRect() để lấy vùng bao chính xác của nét vẽ
+    # [FIX 1] Use boundingRect() instead of controlPointRect() to get the exact bounding area of the drawing
     rect = painter_path.boundingRect()
     if rect.isEmpty(): return []
     
-    # Margin an toàn (2mm)
+    # Safety margin (2mm)
     margin = 2.0 
     x_min, y_min = rect.x() - margin, rect.y() - margin
     width_mm = rect.width() + 2 * margin
@@ -116,9 +116,9 @@ def raster_to_polygons(painter_path, resolution=40.0):
     painter = QPainter(image)
     painter.setRenderHint(QPainter.Antialiasing, False) 
     
-    # [FIX 2] Sử dụng Scale trước, Translate sau (theo logic của Painter)
-    # Điều này đảm bảo: 1 đơn vị vẽ = 40 pixel.
-    # Sau đó dịch chuyển tọa độ vẽ đi (-x_min, -y_min) đơn vị.
+    # [FIX 2] Use Scale first, then Translate (following Painter logic)
+    # This ensures: 1 drawing unit = 40 pixels.
+    # Then shift the drawing coordinates by (-x_min, -y_min) units.
     painter.scale(resolution, resolution)
     painter.translate(-x_min, -y_min)
     
@@ -133,18 +133,18 @@ def raster_to_polygons(painter_path, resolution=40.0):
     rects = []
     px_size = 1.0 / resolution
     
-    # Quét pixel
+    # Scan pixels
     for y in range(img_h):
         start_x = -1
         for x in range(img_w):
-            # Check pixel trắng
+            # Check for white pixels
             if (image.pixel(x, y) & 0x00FFFFFF) != 0: 
                 if start_x == -1: start_x = x
             else:
                 if start_x != -1:
                     rect_w = (x - start_x) * px_size
                     rect_h = px_size
-                    # Chuyển đổi ngược lại tọa độ pixel -> mm
+                    # Convert pixel coordinates back to mm
                     real_x = x_min + (start_x * px_size)
                     real_y = y_min + (y * px_size)
                     
@@ -261,7 +261,7 @@ def generate_polygons_logic(text, font_library, default_font_key, pad_top, pad_b
     max_width = max(line_widths) if line_widths else 0
 
     text_path = QPainterPath()
-    # [QUAN TRỌNG] WindingFill giúp tô màu đúng cho các font vector phức tạp
+    # [IMPORTANT] WindingFill helps correctly fill complex vector fonts
     text_path.setFillRule(Qt.WindingFill)
     
     for line_idx, segments in enumerate(parsed_lines):
@@ -315,7 +315,7 @@ def generate_polygons_logic(text, font_library, default_font_key, pad_top, pad_b
     if no_frame:
         final_path = text_path
     else:
-        # Lấy vùng bao sau khi đã dựng path hoàn chỉnh
+        # Get bounding box after the path is fully constructed
         brect = text_path.boundingRect()
         if brect.isEmpty():
             brect = QPointF(0,0)
