@@ -27,8 +27,8 @@ class PreviewWidget(QGraphicsView):
         line_y = QGraphicsLineItem(0, -1, 0, 1)
         line_x.setPen(pen_origin)
         line_y.setPen(pen_origin)
-        #self.scene.addItem(line_x)
-        #self.scene.addItem(line_y)
+        self.scene.addItem(line_x)
+        self.scene.addItem(line_y)
 
     def update_content(self, polys, color="#F5B041"):
         self.path_item.setBrush(QBrush(QColor(color))) 

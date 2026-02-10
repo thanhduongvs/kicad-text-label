@@ -1,7 +1,3 @@
-venv:
-	python3 -m venv venv
-	source venv/bin/activate
-
 package:
 	@echo "install requirements"
 	pip install -r requirements.txt
@@ -11,7 +7,7 @@ designer:
 	pyside6-designer gui.ui dialog.ui
 
 gui:
-	@echo "Update UI"
+	@echo "Update GUI"
 	pyside6-uic gui.ui -o gui.py
 	pyside6-uic dialog.ui -o dialog.py
 

@@ -60,7 +60,7 @@ class MainWindow(QMainWindow):
         # =========================================================================
         AlignmentFields = ["Left", "Center", "Right"]
         EdgeFields = ["Square", "Round", "Triangle", "Pointed", "Ribbon_Out", "Ribbon_In", "Trap_Left", "Trap_Right"]
-        LayerFields = ["F.SilkS", "F.Paste" , "F.Mask", "F.Cu", "F.Cu/F.Mask"]
+        LayerFields = ["F.SilkS", "F.Paste" , "F.Mask", "F.Cu", "F.Cu/F.Mask", "B.SilkS", "B.Paste" , "B.Mask", "B.Cu", "B.Cu/B.Mask"]
         AnchorFields = ["Top-Left", "Top-Center", "Top-Right", "Center-Left", "Center-Center", "Center-Right", "Bottom-Left", "Bottom-Center", "Bottom-Right"]
         
         self.ui.comboAlignment.addItems(AlignmentFields)
@@ -234,8 +234,9 @@ class MainWindow(QMainWindow):
         try:
             content = generate_kicad_sexpr(self.current_polys, f"tlg_{safe_text}", layer=self.ui.comboLayer.currentText())
             QApplication.clipboard().setText(content)
-            QMessageBox.information(self, "Success", "Footprint copied to clipboard!")
-        except Exception as e: QMessageBox.critical(self, "Error", str(e))
+            self.ui.statusbar.showMessage(f"Footprint copied to clipboard and press Ctrl+V in the PCB Editor")
+        except Exception as e:
+            self.ui.statusbar.showMessage(f"Error: {str(e)}")
     
     def button_save_clicked(self):
         if not self.current_polys: return
@@ -300,9 +301,16 @@ class MainWindow(QMainWindow):
             self.current_polys = apply_anchor_point(scaled_polys, self.ui.comboAnchor.currentText())
             
             layer_colors = { 
-                "F.Cu": "#840000", "B.Cu": "#008400", 
-                "F.SilkS": "#00C2C2", "B.SilkS": "#C200C2", 
-                "F.Paste": "#848484", "F.Mask": "#840084" 
+                "F.SilkS": "#F2EDA1",
+                "F.Paste": "#B4A09A" ,
+                "F.Mask": "#D864FF",
+                "F.Cu": "#C83434",
+                "F.Cu/F.Mask": "#D04C99",
+                "B.SilkS": "#E8B2A7",
+                "B.Paste": "#00C2C2",
+                "B.Mask": "#02FFEE",
+                "B.Cu": "#4D7FC4",
+                "B.Cu/B.Mask": "#27BFD9" 
             }
             color = layer_colors.get(self.ui.comboLayer.currentText(), "#F5B041")
 
