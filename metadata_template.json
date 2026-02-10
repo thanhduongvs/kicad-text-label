@@ -1,9 +1,9 @@
 {
     "$schema": "https://go.kicad.org/pcm/schemas/v1",
-    "name": "Component Position Exporter",
-    "description": "Generates a Component Position CSV file",
-    "description_full": "Generates a Component Position CSV file with DNP support and Natural Sorting.",
-    "identifier": "vn.thanhduongvs.component-position-exporter",
+    "name": "Text Label Generator",
+    "description": "Advanced PCB text label and icon generator with TrueType font support.",
+    "description_full": "A powerful tool to create high-quality text labels and icons for KiCad PCBs. Features include:\n\n- **TrueType Font Support**: Use any TTF/OTF font for text labels.\n- **Symbol/Icon Picker**: Integrated browser for symbol fonts (FontAwesome, etc.).\n- **Rich Text Support**: Mix multiple fonts in a single label using tags.\n- **Negative Rendering**: Create inverted text (copper/mask cutouts) automatically.\n- **Custom Borders**: Square, Round, Hexagon, Ribbon, and more.\n- **Live Preview**: Real-time rendering with zoom and pan.\n- **Direct Export**: Copy directly to clipboard or save as .kicad_mod footprint.",
+    "identifier": "vn.thanhduongvs.text-label",
     "type": "plugin",
     "runtime": {
         "type": "python",
@@ -17,7 +17,7 @@
     },
     "license": "MIT",
     "resources": {
-        "homepage": "https://github.com/thanhduongvs/kicad-component-position"
+        "homepage": "https://github.com/thanhduongvs/kicad-text-label"
     },
     "versions": [
         {
@@ -27,7 +27,7 @@
             "runtime": "ipc",
             "download_sha256": "SHA256",
             "download_size": DOWNLOAD_SIZE,
-            "download_url": "https://raw.githubusercontent.com/thanhduongvs/kicad-component-position/main/pcm/component-position-exporter-VERSION.zip",
+            "download_url": "https://raw.githubusercontent.com/thanhduongvs/kicad-text-label/main/pcm/text-label-generator-VERSION.zip",
             "install_size": INSTALL_SIZE,
             "platforms": [
                 "linux",

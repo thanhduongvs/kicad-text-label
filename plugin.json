@@ -1,17 +1,17 @@
 {
     "$schema": "https://go.kicad.org/api/schemas/v1",
-    "identifier": "vn.thanhduongvs.component-position-exporter",
-    "name": "Component Position Exporter",
-    "description": "Generates a Component Position CSV file with DNP support and Natural Sorting",
+    "identifier": "vn.thanhduongvs.text-label",
+    "name": "Text Label Generator",
+    "description": "Generate advanced text labels and symbols with custom fonts, negative rendering, and border styles",
     "runtime": {
         "type": "python",
         "min_version": "3.10"
     },
     "actions": [
         {
-            "identifier": "component-position-exporter",
-            "name": "Component Position Exporter",
-            "description": "Generates a Component Position CSV file with DNP support and Natural Sorting",
+            "identifier": "text-label",
+            "name": "Text Label Generator",
+            "description": "Open Text Label Generator interface",
             "show-button": true,
             "scopes": [
                 "pcb"

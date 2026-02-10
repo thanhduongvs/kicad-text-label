@@ -43,6 +43,8 @@ class IconPickerDialog(QDialog):
         self.ui.comboFonts.currentIndexChanged.connect(self.on_font_changed) 
         self.ui.buttonPrev.clicked.connect(self.prev_page)
         self.ui.buttonNext.clicked.connect(self.next_page)
+        self.ui.buttonClear.clicked.connect(self.clear_text)
+        self.ui.buttonCancel.clicked.connect(self.reject)
 
         self.ui.tableWidget.cellClicked.connect(self.show_char_preview)
         self.ui.tableWidget.cellDoubleClicked.connect(self.add_icon_to_buffer)
@@ -148,13 +150,17 @@ class IconPickerDialog(QDialog):
         if self.current_page < self.total_pages - 1:
             self.current_page += 1
             self.render_current_page()
+    
+    def clear_text(self):
+        self.ui.plainTextEdit.setPlainText("")
+        self.on_font_changed(0)
 
     def show_char_preview(self, row, col):
         item = self.ui.tableWidget.item(row, col)
         if item:
             char = item.text()
             hex_code = f"U+{ord(char):04X}"
-            self.ui.labelText.setText(f"Selected: {char}  ({hex_code})")
+            self.ui.labelText.setText(f"{char}  ({hex_code})")
             
             preview_font = QFont(item.font())
             preview_font.setPixelSize(14) 

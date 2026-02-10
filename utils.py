@@ -386,14 +386,14 @@ def apply_corner_radius_to_poly(poly_pts, radius):
         return list(poly.buffer(-radius, join_style=1).buffer(2*radius, join_style=1).buffer(-radius, join_style=1).exterior.coords)
     except: return poly_pts
 
-def generate_kicad_sexpr(polys, footprint_name="KiBuzzard_Gen", layer="F.Cu"):
+def generate_kicad_sexpr(polys, footprint_name="TextLabel_Gen", layer="F.Cu"):
     tedit = hex(int(time.time()))[2:].upper()
     all_pts = [p for poly in polys for p in poly]
     ref_y, val_y = (min(p[1] for p in all_pts)-2, max(p[1] for p in all_pts)+2) if all_pts else (-5, 5)
-    s_expr = [f'(footprint "{footprint_name}" (layer "{layer}") (tedit {tedit}) (generator kibuzzard_clone)']
+    s_expr = [f'(footprint "{footprint_name}" (layer "{layer}") (tedit {tedit}) (generator textlabel)']
     s_expr.append('  (attr board_only exclude_from_pos_files exclude_from_bom)')
     s_expr.append(f'  (fp_text reference "{footprint_name}" (at 0 {ref_y:.4f}) (layer "F.SilkS") hide (effects (font (size 1 1) (thickness 0.15))))')
-    s_expr.append(f'  (fp_text value "G***" (at 0 {val_y:.4f}) (layer "F.SilkS") hide (effects (font (size 1 1) (thickness 0.15))))')
+    s_expr.append(f'  (fp_text value "TLG***" (at 0 {val_y:.4f}) (layer "F.SilkS") hide (effects (font (size 1 1) (thickness 0.15))))')
     for poly in polys:
         if len(poly) < 3: continue
         s_expr.append('  (fp_poly (pts'); 

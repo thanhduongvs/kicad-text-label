@@ -1,7 +1,7 @@
 import sys
 import os
 from PySide6.QtWidgets import (
-    QApplication, QMainWindow,
+    QApplication, QMainWindow, QMenu,
     QMessageBox, QFileDialog, QVBoxLayout
 )
 from PySide6.QtGui import QFontDatabase, QTextCursor
@@ -31,6 +31,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.ui = Ui_MainWindow()
         self.ui.setupUi(self)
+        self.setWindowTitle(f"Text Label Generator v{version}")
         
         self.app_ready = False 
 
@@ -99,6 +100,7 @@ class MainWindow(QMainWindow):
         self.ui.buttonSave.clicked.connect(self.button_save_clicked)
         self.ui.buttonClose.clicked.connect(self.button_close_clicked)
         self.ui.buttonIcon.clicked.connect(self.button_icon_clicked)
+        self.ui.buttonSymbol.clicked.connect(self.button_symbol_clicked)
 
         self.ui.plainTextEdit.textChanged.connect(self.trigger_refresh) 
         
@@ -172,7 +174,7 @@ class MainWindow(QMainWindow):
             except Exception as e:
                 print(f"Error loading font {f}: {e}")
                 
-        self.ui.labelFontDir.setText(f"Fonts loaded from: {folder_path}")
+        self.ui.labelFontDir.setText(f"Fonts loaded from: {os.path.dirname(abs_path)}")
 
     def scan_symbol_fonts(self, folder_path):
         base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -230,7 +232,7 @@ class MainWindow(QMainWindow):
         t = self.ui.plainTextEdit.toPlainText().strip()
         safe_text = "".join(c for c in (t.split('\n')[0] if t else "FP") if c.isalnum() or c in (' ', '_', '-')).strip()
         try:
-            content = generate_kicad_sexpr(self.current_polys, f"KiBuzzard_{safe_text}", layer=self.ui.comboLayer.currentText())
+            content = generate_kicad_sexpr(self.current_polys, f"tlg_{safe_text}", layer=self.ui.comboLayer.currentText())
             QApplication.clipboard().setText(content)
             QMessageBox.information(self, "Success", "Footprint copied to clipboard!")
         except Exception as e: QMessageBox.critical(self, "Error", str(e))
@@ -239,10 +241,10 @@ class MainWindow(QMainWindow):
         if not self.current_polys: return
         t = self.ui.plainTextEdit.toPlainText().strip()
         safe_text = "".join(c for c in (t.split('\n')[0] if t else "FP") if c.isalnum() or c in (' ', '_', '-')).strip()
-        path, _ = QFileDialog.getSaveFileName(self, "Save Footprint", f"KiBuzzard_{safe_text}.kicad_mod", "KiCad Footprint (*.kicad_mod)")
+        path, _ = QFileDialog.getSaveFileName(self, "Save Footprint", f"tlg_{safe_text}.kicad_mod", "KiCad Footprint (*.kicad_mod)")
         if path:
             try:
-                content = generate_kicad_sexpr(self.current_polys, f"KiBuzzard_{safe_text}", layer=self.ui.comboLayer.currentText())
+                content = generate_kicad_sexpr(self.current_polys, f"tlg_{safe_text}", layer=self.ui.comboLayer.currentText())
                 with open(path, "w", encoding="utf-8") as f: f.write(content)
                 QMessageBox.information(self, "Success", f"Saved to: {path}")
             except Exception as e: QMessageBox.critical(self, "Error", str(e))
@@ -255,6 +257,16 @@ class MainWindow(QMainWindow):
                 self.ui.plainTextEdit.insertPlainText(text_result)
                 self.ui.plainTextEdit.setFocus()
     
+    def button_symbol_clicked(self):
+        menu = QMenu(self)
+        for k, v in SYMBOL_MAP.items():
+            menu.addAction(f"{v} {k}").triggered.connect(lambda c, s=k: self.insert_symbol(s))
+        menu.exec(self.ui.buttonSymbol.mapToGlobal(QPointF(0, self.ui.buttonSymbol.height()).toPoint()))
+
+    def insert_symbol(self, symbol_key):
+        self.ui.plainTextEdit.insertPlainText(symbol_key + " ")
+        self.ui.plainTextEdit.setFocus()
+
     def button_close_clicked(self):
         self.close()
     
