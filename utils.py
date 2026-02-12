@@ -10,6 +10,8 @@ from shapely.validation import make_valid
 from PySide6.QtGui import QImage, QPainter, QPainterPath, QColor, QBrush, QPen, QTransform
 from PySide6.QtCore import Qt, QPointF
 
+# --- CÁC HÀM HELPER CƠ BẢN (KHÔNG ĐỔI) ---
+
 class SimplePathPen(BasePen):
     def __init__(self, glyphSet, steps=12):
         super().__init__(glyphSet)
@@ -92,86 +94,50 @@ def sanitize_font_key(filename):
     clean_name = re.sub(r'[^a-zA-Z0-9]', '_', name)
     return clean_name
 
-# --- RASTERIZATION TO POLYGONS (FIXED & ROBUST) ---
+# --- RASTERIZATION & UTILS ---
 
 def raster_to_polygons(painter_path, resolution=40.0):
-    # [FIX 1] Use boundingRect() instead of controlPointRect() to get the exact bounding area of the drawing
     rect = painter_path.boundingRect()
     if rect.isEmpty(): return []
-    
-    # Safety margin (2mm)
     margin = 2.0 
     x_min, y_min = rect.x() - margin, rect.y() - margin
     width_mm = rect.width() + 2 * margin
     height_mm = rect.height() + 2 * margin
-    
     img_w = int(math.ceil(width_mm * resolution))
     img_h = int(math.ceil(height_mm * resolution))
-    
     if img_w <= 0 or img_h <= 0: return []
 
     image = QImage(img_w, img_h, QImage.Format_RGB32)
     image.fill(Qt.black) 
-    
     painter = QPainter(image)
     painter.setRenderHint(QPainter.Antialiasing, False) 
-    
-    # [FIX 2] Use Scale first, then Translate (following Painter logic)
-    # This ensures: 1 drawing unit = 40 pixels.
-    # Then shift the drawing coordinates by (-x_min, -y_min) units.
     painter.scale(resolution, resolution)
     painter.translate(-x_min, -y_min)
-    
-    painter.setPen(Qt.NoPen)
-    painter.setBrush(QColor(255, 255, 255)) 
-    
-    try:
-        painter.drawPath(painter_path)
-    finally:
-        painter.end() 
+    painter.setPen(Qt.NoPen); painter.setBrush(QColor(255, 255, 255)) 
+    try: painter.drawPath(painter_path)
+    finally: painter.end() 
     
     rects = []
     px_size = 1.0 / resolution
-    
-    # Scan pixels
     for y in range(img_h):
         start_x = -1
         for x in range(img_w):
-            # Check for white pixels
             if (image.pixel(x, y) & 0x00FFFFFF) != 0: 
                 if start_x == -1: start_x = x
             else:
                 if start_x != -1:
                     rect_w = (x - start_x) * px_size
                     rect_h = px_size
-                    # Convert pixel coordinates back to mm
                     real_x = x_min + (start_x * px_size)
                     real_y = y_min + (y * px_size)
-                    
-                    poly = [
-                        (real_x, real_y),
-                        (real_x + rect_w, real_y),
-                        (real_x + rect_w, real_y + rect_h),
-                        (real_x, real_y + rect_h),
-                        (real_x, real_y)
-                    ]
-                    rects.append(poly)
+                    rects.append([(real_x, real_y), (real_x + rect_w, real_y), (real_x + rect_w, real_y + rect_h), (real_x, real_y + rect_h), (real_x, real_y)])
                     start_x = -1
-        
         if start_x != -1:
             rect_w = (img_w - start_x) * px_size
             rect_h = px_size
             real_x = x_min + (start_x * px_size)
             real_y = y_min + (y * px_size)
-            poly = [
-                (real_x, real_y),
-                (real_x + rect_w, real_y),
-                (real_x + rect_w, real_y + rect_h),
-                (real_x, real_y + rect_h),
-                (real_x, real_y)
-            ]
-            rects.append(poly)
-
+            rects.append([(real_x, real_y), (real_x + rect_w, real_y), (real_x + rect_w, real_y + rect_h), (real_x, real_y + rect_h), (real_x, real_y)])
     return rects
 
 def center_polygons_at_origin(polys):
@@ -235,12 +201,17 @@ def generate_kicad_sexpr(polys, footprint_name="KiBuzzard_Gen", layer="F.Cu"):
     s_expr.append(")")
     return "\n".join(s_expr)
 
-def generate_polygons_logic(text, font_library, default_font_key, pad_top, pad_bottom, pad_left, pad_right, align, cap_left, cap_right, line_spacing, border_width, corner_radius, is_negative, no_frame):
+# --- LOGIC VẼ CHÍNH ---
+
+def generate_polygons_logic(text, font_library, default_font_key, pad_top, pad_bottom, pad_left, pad_right, align, cap_left, cap_right, line_spacing, border_width, corner_radius, is_negative, no_frame, 
+                            is_circular=False, radius=20.0, start_angle=0.0, is_fit_angle=False, total_angle=180.0):
     base_height = 10.0 
     if not font_library or default_font_key not in font_library: return []
     
-    line_step_y = base_height * line_spacing 
     lines = text.split('\n')
+    if is_circular:
+        lines = [" ".join(lines)] 
+
     line_widths = []; parsed_lines = [] 
     
     for line in lines:
@@ -257,138 +228,221 @@ def generate_polygons_logic(text, font_library, default_font_key, pad_top, pad_b
                 code = ord(char)
                 if code in cmap: total_w += hmtx[cmap[code]][0] * scale
                 else: total_w += (head.unitsPerEm * 0.7) * scale
-        line_widths.append(total_w)
+        
+        extra_space = 0
+        if is_circular and line_spacing > 1.0:
+            extra_space = (line_spacing - 1.0) * (base_height * 0.5) * len(line)
+        line_widths.append(total_w + extra_space)
+        
     max_width = max(line_widths) if line_widths else 0
 
     text_path = QPainterPath()
-    # [IMPORTANT] WindingFill helps correctly fill complex vector fonts
     text_path.setFillRule(Qt.WindingFill)
     
-    for line_idx, segments in enumerate(parsed_lines):
-        cursor_x = get_start_x(align, line_widths[line_idx], max_width)
-        cursor_y = line_idx * line_step_y
+    if is_circular:
+        # --- CHẾ ĐỘ TRÒN (RADIUS = OUTER RADIUS) ---
+        width_stretch_factor = 1.0
         
-        for content, font_obj in segments:
-            if not font_obj: continue
-            glyph_set = font_obj.getGlyphSet(); cmap = font_obj.getBestCmap()
-            hmtx = font_obj['hmtx']; units_per_em = font_obj['head'].unitsPerEm
-            hhea = font_obj['hhea']
-            font_raw_height = hhea.ascent - hhea.descent
-            current_scale = base_height / font_raw_height
-            
-            for char in content:
-                code = ord(char)
-                if code not in cmap:
-                    missing_contours = create_missing_glyph(0, 0, current_scale, units_per_em)
-                    for cnt in missing_contours:
-                        sub_path = QPainterPath()
-                        offset_y_box = cursor_y - base_height * 0.8
-                        if cnt:
-                            sub_path.moveTo(cnt[0][0] + cursor_x, cnt[0][1] + offset_y_box)
-                            for pt in cnt[1:]: sub_path.lineTo(pt[0] + cursor_x, pt[1] + offset_y_box)
-                            sub_path.closeSubpath()
-                        text_path.addPath(sub_path)
-                    
-                    cursor_x += (units_per_em * 0.7) * current_scale
-                    continue
+        if is_fit_angle and total_angle > 0.1 and max_width > 0:
+            natural_angle_span = (max_width / radius) * (180.0 / math.pi)
+            if natural_angle_span > 0: width_stretch_factor = total_angle / natural_angle_span
+        elif not is_fit_angle:
+            circumference = 2 * math.pi * radius
+            if max_width > circumference:
+                shrink = circumference / max_width
+                width_stretch_factor = shrink * 0.99 
+        
+        current_angle = start_angle
+        actual_arc_len = max_width * width_stretch_factor
+        
+        if align == 'Center':
+             total_angle_deg = (actual_arc_len / radius) * (180.0 / math.pi)
+             current_angle -= total_angle_deg / 2
+        elif align == 'Right':
+             total_angle_deg = (actual_arc_len / radius) * (180.0 / math.pi)
+             current_angle -= total_angle_deg
 
-                glyph_name = cmap[code]
-                pen = SimplePathPen(glyph_set, steps=10)
-                glyph_set[glyph_name].draw(pen)
+        spacing_add_mm = 0
+        if line_spacing > 1.0: spacing_add_mm = (line_spacing - 1.0) * (base_height * 0.5)
+
+        for segments in parsed_lines:
+            for content, font_obj in segments:
+                if not font_obj: continue
+                glyph_set = font_obj.getGlyphSet(); cmap = font_obj.getBestCmap()
+                hmtx = font_obj['hmtx']; units_per_em = font_obj['head'].unitsPerEm
+                hhea = font_obj['hhea']
+                f_height = hhea.ascent - hhea.descent
                 
-                if pen.contours:
-                    char_path = QPainterPath()
-                    for cnt in pen.contours:
-                        if len(cnt) < 2: continue
-                        start_pt = (cnt[0][0]*current_scale + cursor_x, -cnt[0][1]*current_scale + cursor_y)
-                        char_path.moveTo(*start_pt)
-                        for pt in cnt[1:]:
-                            next_pt = (pt[0]*current_scale + cursor_x, -pt[1]*current_scale + cursor_y)
-                            char_path.lineTo(*next_pt)
-                        char_path.closeSubpath()
-                    text_path.addPath(char_path)
+                scale_y = base_height / f_height
+                scale_x = scale_y * width_stretch_factor
+                
+                # [QUAN TRỌNG] Tính Ascent theo scale mới để canh Outer Radius
+                scaled_ascent = hhea.ascent * scale_y
+                
+                current_spacing = spacing_add_mm * width_stretch_factor
 
-                cursor_x += hmtx[glyph_name][0] * current_scale
-
-    final_path = QPainterPath()
-    
-    if no_frame:
+                for char in content:
+                    code = ord(char)
+                    char_width_natural = 0 
+                    raw_char_path = QPainterPath()
+                    
+                    if code not in cmap:
+                        missing_contours = create_missing_glyph(0, 0, scale_y, units_per_em)
+                        for cnt in missing_contours:
+                            sub_path = QPainterPath()
+                            if cnt:
+                                sub_path.moveTo(cnt[0][0], cnt[0][1])
+                                for pt in cnt[1:]: sub_path.lineTo(pt[0], pt[1])
+                                sub_path.closeSubpath()
+                            raw_char_path.addPath(sub_path)
+                        char_width_natural = (units_per_em * 0.7) * scale_y
+                    else:
+                        glyph_name = cmap[code]
+                        pen = SimplePathPen(glyph_set, steps=10)
+                        glyph_set[glyph_name].draw(pen)
+                        if pen.contours:
+                            for cnt in pen.contours:
+                                if len(cnt) < 2: continue
+                                start_pt = (cnt[0][0]*scale_x, -cnt[0][1]*scale_y)
+                                raw_char_path.moveTo(*start_pt)
+                                for pt in cnt[1:]:
+                                    next_pt = (pt[0]*scale_x, -pt[1]*scale_y)
+                                    raw_char_path.lineTo(*next_pt)
+                                raw_char_path.closeSubpath()
+                        char_width_natural = hmtx[glyph_name][0] * scale_y
+                    
+                    char_width_final = char_width_natural * width_stretch_factor
+                    total_char_occupy = char_width_final + current_spacing
+                    char_angle_span = (total_char_occupy / radius) * (180.0 / math.pi)
+                    center_char_angle = current_angle + (char_angle_span / 2)
+                    
+                    t = QTransform()
+                    t.rotate(center_char_angle + 90) 
+                    
+                    # [QUAN TRỌNG] Dịch chuyển để đỉnh chữ chạm Radius
+                    # -radius: đưa baseline ra mép ngoài
+                    # +scaled_ascent: lùi baseline về tâm một đoạn = chiều cao ascent
+                    # => Đỉnh (Ascent) sẽ nằm đúng tại -radius
+                    t.translate(0, -radius + scaled_ascent) 
+                    
+                    t.translate(-char_width_final / 2, 0)
+                    text_path.addPath(t.map(raw_char_path))
+                    current_angle += char_angle_span
         final_path = text_path
+
     else:
-        # Get bounding box after the path is fully constructed
-        brect = text_path.boundingRect()
-        if brect.isEmpty():
-            brect = QPointF(0,0)
-            min_x, max_x, min_y, max_y = 0, 0, 0, 0
+        # --- LINEAR MODE ---
+        line_step_y = base_height * line_spacing 
+        for line_idx, segments in enumerate(parsed_lines):
+            cursor_x = get_start_x(align, line_widths[line_idx], max_width)
+            cursor_y = line_idx * line_step_y
+            
+            for content, font_obj in segments:
+                if not font_obj: continue
+                glyph_set = font_obj.getGlyphSet(); cmap = font_obj.getBestCmap()
+                hmtx = font_obj['hmtx']; units_per_em = font_obj['head'].unitsPerEm
+                hhea = font_obj['hhea']
+                f_height = hhea.ascent - hhea.descent
+                current_scale = base_height / f_height
+                
+                for char in content:
+                    code = ord(char)
+                    if code not in cmap:
+                        missing_contours = create_missing_glyph(0, 0, current_scale, units_per_em)
+                        for cnt in missing_contours:
+                            sub_path = QPainterPath()
+                            offset_y_box = cursor_y - base_height * 0.8
+                            if cnt:
+                                sub_path.moveTo(cnt[0][0] + cursor_x, cnt[0][1] + offset_y_box)
+                                for pt in cnt[1:]: sub_path.lineTo(pt[0] + cursor_x, pt[1] + offset_y_box)
+                                sub_path.closeSubpath()
+                            text_path.addPath(sub_path)
+                        cursor_x += (units_per_em * 0.7) * current_scale
+                        continue
+
+                    glyph_name = cmap[code]
+                    pen = SimplePathPen(glyph_set, steps=10)
+                    glyph_set[glyph_name].draw(pen)
+                    
+                    if pen.contours:
+                        char_path = QPainterPath()
+                        for cnt in pen.contours:
+                            if len(cnt) < 2: continue
+                            start_pt = (cnt[0][0]*current_scale + cursor_x, -cnt[0][1]*current_scale + cursor_y)
+                            char_path.moveTo(*start_pt)
+                            for pt in cnt[1:]:
+                                next_pt = (pt[0]*current_scale + cursor_x, -pt[1]*current_scale + cursor_y)
+                                char_path.lineTo(*next_pt)
+                            char_path.closeSubpath()
+                        text_path.addPath(char_path)
+                    cursor_x += hmtx[glyph_name][0] * current_scale
+
+        final_path = QPainterPath()
+        if no_frame: final_path = text_path
         else:
-            min_x = brect.x(); max_x = min_x + brect.width()
-            min_y = brect.y(); max_y = min_y + brect.height()
+            brect = text_path.boundingRect()
+            if brect.isEmpty(): brect = QPointF(0,0); min_x=0; max_x=0; min_y=0; max_y=0
+            else: min_x = brect.x(); max_x = min_x + brect.width(); min_y = brect.y(); max_y = min_y + brect.height()
 
-        rect_left = min_x - pad_left
-        rect_right = max_x + pad_right
-        rect_top = min_y - pad_top
-        rect_bottom = max_y + pad_bottom
-        current_box_height = (rect_bottom - rect_top)
-        
-        radius = current_box_height / 2; slant = current_box_height * 0.25 
-        extra_left = 0; extra_right = 0
-        if cap_left == 'Ribbon_In': extra_left = radius
-        elif cap_left in ['Trap_Left', 'Trap_Right']: extra_left = slant 
-        if cap_right == 'Ribbon_In': extra_right = radius
-        elif cap_right in ['Trap_Left', 'Trap_Right']: extra_right = slant
-
-        final_rect_left = rect_left - extra_left
-        final_rect_right = rect_right + extra_right
-        
-        tl = (final_rect_left, rect_top); tr = (final_rect_right, rect_top)
-        br = (final_rect_right, rect_bottom); bl = (final_rect_left, rect_bottom)
-
-        if cap_left == 'Trap_Left': tl = (final_rect_left + slant, rect_top); bl = (final_rect_left - slant, rect_bottom)
-        elif cap_left == 'Trap_Right': tl = (final_rect_left - slant, rect_top); bl = (final_rect_left + slant, rect_bottom)
-        if cap_right == 'Trap_Left': tr = (final_rect_right + slant, rect_top); br = (final_rect_right - slant, rect_bottom)
-        elif cap_right == 'Trap_Right': tr = (final_rect_right - slant, rect_top); br = (final_rect_right + slant, rect_bottom)
-
-        shell_pts = [tl, tr]
-        if cap_right not in ['Trap_Left', 'Trap_Right']: shell_pts.extend(create_cap_path(rect_right, rect_top, rect_bottom, cap_right, False))
-        shell_pts.extend([br, bl])
-        if cap_left not in ['Trap_Left', 'Trap_Right']: shell_pts.extend(create_cap_path(rect_left, rect_top, rect_bottom, cap_left, True))
-        shell_pts.append(shell_pts[0]) 
-
-        safe_r = min(corner_radius, current_box_height/2.1)
-        if safe_r > 0.01:
-            try:
-                poly = Polygon(shell_pts)
-                buffered = poly.buffer(-safe_r, join_style=1).buffer(2*safe_r, join_style=1).buffer(-safe_r, join_style=1)
-                shell_pts = list(buffered.exterior.coords)
-            except: pass
+            rect_left = min_x - pad_left; rect_right = max_x + pad_right
+            rect_top = min_y - pad_top; rect_bottom = max_y + pad_bottom
+            current_box_height = (rect_bottom - rect_top)
+            radius_frame = current_box_height / 2; slant = current_box_height * 0.25 
+            extra_left = 0; extra_right = 0
             
-        frame_path = QPainterPath()
-        if shell_pts:
-            frame_path.moveTo(*shell_pts[0])
-            for pt in shell_pts[1:]: frame_path.lineTo(*pt)
-            frame_path.closeSubpath()
-            
-        if is_negative:
-            final_path = frame_path.subtracted(text_path)
-        else:
-            outer_poly = Polygon(shell_pts)
-            inner_poly = outer_poly.buffer(-border_width, join_style=2)
-            
-            outer_path = QPainterPath()
-            outer_pts = list(outer_poly.exterior.coords)
-            outer_path.moveTo(*outer_pts[0])
-            for pt in outer_pts[1:]: outer_path.lineTo(*pt)
-            outer_path.closeSubpath()
+            if cap_left == 'Ribbon_In': extra_left = radius_frame
+            elif cap_left in ['Trap_Left', 'Trap_Right']: extra_left = slant 
+            if cap_right == 'Ribbon_In': extra_right = radius_frame
+            elif cap_right in ['Trap_Left', 'Trap_Right']: extra_right = slant
 
-            inner_path = QPainterPath()
-            inner_pts = list(inner_poly.exterior.coords)
-            inner_path.moveTo(*inner_pts[0])
-            for pt in inner_pts[1:]: inner_path.lineTo(*pt)
-            inner_path.closeSubpath()
-            
-            frame_border_path = outer_path.subtracted(inner_path)
-            final_path = frame_border_path.united(text_path)
+            final_rect_left = rect_left - extra_left; final_rect_right = rect_right + extra_right
+            tl = (final_rect_left, rect_top); tr = (final_rect_right, rect_top)
+            br = (final_rect_right, rect_bottom); bl = (final_rect_left, rect_bottom)
+
+            if cap_left == 'Trap_Left': tl = (final_rect_left + slant, rect_top); bl = (final_rect_left - slant, rect_bottom)
+            elif cap_left == 'Trap_Right': tl = (final_rect_left - slant, rect_top); bl = (final_rect_left + slant, rect_bottom)
+            if cap_right == 'Trap_Left': tr = (final_rect_right + slant, rect_top); br = (final_rect_right - slant, rect_bottom)
+            elif cap_right == 'Trap_Right': tr = (final_rect_right - slant, rect_top); br = (final_rect_right + slant, rect_bottom)
+
+            shell_pts = [tl, tr]
+            if cap_right not in ['Trap_Left', 'Trap_Right']: shell_pts.extend(create_cap_path(rect_right, rect_top, rect_bottom, cap_right, False))
+            shell_pts.extend([br, bl])
+            if cap_left not in ['Trap_Left', 'Trap_Right']: shell_pts.extend(create_cap_path(rect_left, rect_top, rect_bottom, cap_left, True))
+            shell_pts.append(shell_pts[0]) 
+
+            safe_r = min(corner_radius, current_box_height/2.1)
+            if safe_r > 0.01:
+                try:
+                    poly = Polygon(shell_pts)
+                    buffered = poly.buffer(-safe_r, join_style=1).buffer(2*safe_r, join_style=1).buffer(-safe_r, join_style=1)
+                    shell_pts = list(buffered.exterior.coords)
+                except: pass
+                
+            frame_path = QPainterPath()
+            if shell_pts:
+                frame_path.moveTo(*shell_pts[0])
+                for pt in shell_pts[1:]: frame_path.lineTo(*pt)
+                frame_path.closeSubpath()
+                
+            if is_negative: final_path = frame_path.subtracted(text_path)
+            else:
+                outer_poly = Polygon(shell_pts)
+                inner_poly = outer_poly.buffer(-border_width, join_style=2)
+                
+                outer_path = QPainterPath()
+                outer_pts = list(outer_poly.exterior.coords)
+                outer_path.moveTo(*outer_pts[0])
+                for pt in outer_pts[1:]: outer_path.lineTo(*pt)
+                outer_path.closeSubpath()
+
+                inner_path = QPainterPath()
+                inner_pts = list(inner_poly.exterior.coords)
+                inner_path.moveTo(*inner_pts[0])
+                for pt in inner_pts[1:]: inner_path.lineTo(*pt)
+                inner_path.closeSubpath()
+                
+                frame_border_path = outer_path.subtracted(inner_path)
+                final_path = frame_border_path.united(text_path)
 
     final_polys = raster_to_polygons(final_path, resolution=40.0)
-    
     return center_polygons_at_origin(final_polys)

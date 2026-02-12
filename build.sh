@@ -1,6 +1,14 @@
 #!/bin/bash -e
 
-ID_NAME="vn.thanhduongvs.component-position-exporter"
+ID_NAME=$(python3 -c "import json; print(json.load(open('plugin.json'))['identifier'])")
+
+if [ -z "$ID_NAME" ]; then
+    echo "Error: Could not extract identifier from plugin.json"
+    exit 1
+fi
+
+echo "Detected Identifier: $ID_NAME"
+
 DIR_INSTALL=${ID_NAME//./_}
 TEMP_NAME=${ID_NAME##*.}
 DIR_INSTALL_DEV=${TEMP_NAME//-/_}

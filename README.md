@@ -1,13 +1,12 @@
-# Text Label Generator
+# ![icon](icon.png) Text Label Generator
 
 A powerful **KiCad 9.0+** plugin for generating high-quality, vector-based text labels and symbols directly on your PCB. 
 
 This tool allows you to use TrueType fonts, create inverted (negative) text, apply custom border styles, and mix multiple fonts in a single label using a rich-text tagging system.
 
-![Preview Screenshot](https://raw.githubusercontent.com/thanhduongvs/kicad-text-label/main/docs/preview.png)
-*(Replace this link with an actual screenshot of your UI)*
+![Preview Screenshot](images/gui.png)
 
-## ✨ Features
+## 🚀 Key Features
 
 * **TrueType/OpenType Support:** Load and render any `.ttf` or `.otf` font.
 * **Rich Text Tagging:** Mix different fonts in one string (e.g., `{Roboto}Text {FontAwesome}Icon{/FontAwesome}{/Roboto}`).
@@ -23,20 +22,24 @@ This tool allows you to use TrueType fonts, create inverted (negative) text, app
     * **Copy to Clipboard:** Paste directly into Pcbnew.
     * **Save as File:** Save as a `.kicad_mod` footprint file.
 
-## 🚀 Installation
+## 🛠️ Installation
 
 ### Via KiCad Plugin and Content Manager (Recommended)
-1.  Open KiCad.
-2.  Go to **Plugin and Content Manager (PCM)**.
-3.  Search for "Text Label Generator".
-4.  Click **Install**.
+Add our custom repo to **the Plugin and Content Manager**, the URL is:
+`https://raw.githubusercontent.com/thanhduongvs/kicad-repository/main/repository.json`
+
+![pcm](images/pcm.png)
 
 ### Manual Installation
-1.  Download the latest release `.zip` from the [Releases page](../../releases).
-2.  Open KiCad -> **Plugin and Content Manager**.
-3.  Click **Install from File...** and select the downloaded zip.
+- Download the plugin source code as **a .zip** file.
+- Locate your KiCad plugins folder:
+  - **Windows:** `Documents\KiCad\9.0\plugins`
+  - **Linux:** `~/.local/share/kicad/9.0/plugins`
+  - **macOS:** `~/Documents/KiCad/9.0/plugins`
+- Extract the archive to the KiCad plugins directory
+- Restart KiCad / PCB Editor.
 
-## 🛠 Usage
+## 🖥️ Usage
 
 1.  **Open the Plugin:** Click the "Text Label Generator" icon in the PCB Editor toolbar.
 2.  **Select Font:** Choose a text font or a symbol font from the dropdown.
@@ -55,11 +58,10 @@ This tool allows you to use TrueType fonts, create inverted (negative) text, app
 * Place your text fonts in: `plugin_folder/fonts/texts/`
 * Place your symbol/icon fonts in: `plugin_folder/fonts/symbols/`
 
-## 🤝 Contributing
-Contributions are welcome! Please feel free to submit a Pull Request.
+## 📦 Libraries Used
+This project relies on several powerful open-source libraries:
+ - [PySide6](https://pypi.org/project/PySide6/): The official Python module from the Qt for Python project, used for the graphical user interface.
 
-## 📄 License
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+## 📜 License and Credits
 
----
-**Author:** [Thanh Duong](https://github.com/thanhduongvs)
+Plugin code licensed under MIT, see `LICENSE` for more info.
