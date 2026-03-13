@@ -405,10 +405,12 @@ def generate_polygons_logic(text, font_library, default_font_key, pad_top, pad_b
             elif cap_right == 'Trap_Right': tr = (final_rect_right - slant, rect_top); br = (final_rect_right + slant, rect_bottom)
 
             shell_pts = [tl, tr]
-            if cap_right not in ['Trap_Left', 'Trap_Right']: shell_pts.extend(create_cap_path(rect_right, rect_top, rect_bottom, cap_right, False))
+            if cap_right not in ['Trap_Left', 'Trap_Right']: 
+                shell_pts.extend(create_cap_path(final_rect_right, rect_top, rect_bottom, cap_right, False))
             shell_pts.extend([br, bl])
-            if cap_left not in ['Trap_Left', 'Trap_Right']: shell_pts.extend(create_cap_path(rect_left, rect_top, rect_bottom, cap_left, True))
-            shell_pts.append(shell_pts[0]) 
+            if cap_left not in ['Trap_Left', 'Trap_Right']: 
+                shell_pts.extend(create_cap_path(final_rect_left, rect_top, rect_bottom, cap_left, True))
+            shell_pts.append(shell_pts[0])
 
             safe_r = min(corner_radius, current_box_height/2.1)
             if safe_r > 0.01:
